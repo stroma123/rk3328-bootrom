@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+
+# 00000000: e59ff018 e59ff018 e59ff018 e59ff018    ................
+# 00000010: e59ff018 eafffffe e59ff018 e59ff018    ................
+
+import struct
+
+infile = "rom.txt"
+outfile = "bootrom.bin"
+
+
+def conv(word):
+    return int(word, 16)
+
+
+def conv_swap(word):
+    b1 = word[0:2]
+    b2 = word[2:4]
+    b3 = word[4:6]
+    b4 = word[6:8]
+    ww = b4 + b3 + b2 + b1
+    return int(ww, 16)
+
+
+with open(infile, "r") as f, open(outfile, "wb") as of:
+    for line in f:
+        w = line.split()
+        if len(w) < 5:
+            continue
+
+        data = [
+            conv(w[1]),
+            conv(w[2]),
+            conv(w[3]),
+            conv(w[4]),
+        ]
+
+        # Equivalent to Ruby's pack("LLLL")
+        # Native unsigned long (typically 4 bytes each, little-endian on most systems)
+        buf = struct.pack("<IIII", *data)
+        of.write(buf)
+
