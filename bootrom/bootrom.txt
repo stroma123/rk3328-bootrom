@@ -538,7 +538,7 @@ ffff0304:	b9000aff 	str	wzr, [x23, #8]			; SRAM[36] = 0
 ffff0308:	b90006ff 	str	wzr, [x23, #4]			; SRAM[32] = 0
 
 ffff030c:	b9400a80 	ldr	w0, [x20, #8]
-ffff0310:	364002c0 	tbz	w0, #8, 0xffff0368		; skip checks if payload[8] == 8
+ffff0310:	364002c0 	tbz	w0, #8, 0xffff0368		; skip checks if bit 8 of payload-word[8] is clear
 ffff0314:	79402281 	ldrh	w1, [x20, #16]
 ffff0318:	79402682 	ldrh	w2, [x20, #18]
 ffff031c:	6b22403f 	cmp	w1, w2, uxtw
@@ -858,18 +858,18 @@ ffff06c4:	1b007c20 	mul	w0, w1, w0
 
 ; Here we have calculated w0 = arg*mhz
 ; We compare the cpu mhz to 0x18 (24)
-; if it matches, w0 = (0x1fff + w0 * 0x75) >> 13
-; otherwise ---  w0 = (0x7fff + w0 * 0xb9) >> 15
+; if it matches, w0 = (0x1fff + w0 * 0x77) >> 13
+; otherwise ---  w0 = (0x7fff + w0 * 0x80) >> 15   (the *0x80 is a lsl #7)
 ; if this result is non-zero, we use it to delay
 ;
 ; Just out of curiosity, what happens when this is called with xxdelay(1)
-; and the cpu speed is 24?  We calculate 0x1fff + 24 * 117 = 10999
+; and the cpu speed is 24?  We calculate 0x1fff + 24 * 119 = 11047
 ; We shift this right 13 bits to get 1
 ; This goes to a simple delay that will execute 2 instructions
 ; per count.  This seems like pretty short delay.
 ; What if the cpu speed is 400 and we ask for a delay of 10
-; calculate 32767 + 4000 * 185 = 772767
-; shift this by 2 to get 23, still a very short delay
+; calculate 32767 + 4000 * 128 = 544767
+; shift this right 15 bits to get 16, still a very short delay
 ffff06c8:	7100603f 	cmp	w1, #0x18
 ffff06cc:	540000c1 	b.ne	0xffff06e4  // b.any
 ffff06d0:	5283ffe1 	mov	w1, #0x1fff                	// #8191
@@ -2923,7 +2923,7 @@ ffff24b4:	710002bf 	cmp	w21, #0x0				; arg w0 == 0?
 ffff24b8:	d2bfea40 	mov	x0, #0xff520000			; eMMC base
 ffff24bc:	d2bfea01 	mov	x1, #0xff500000			; SD MMC base
 ffff24c0:	d0000002 	adrp	x2, 0xffff4000
-ffff24c4:	b94ab453 	ldr	w19, [x2, #2740]		; fff4ab4: 80202000
+ffff24c4:	b94ab453 	ldr	w19, [x2, #2740]		; ffff4ab4: 80202000
 ffff24c8:	9a800034 	csel	x20, x1, x0, eq		; x20 = (arg w0 == 0) ? SD base : eMMC base
 ffff24cc:	b27c0280 	orr	x0, x20, #0x10
 ffff24d0:	b900001f 	str	wzr, [x0]				; mmc_10 = 0
@@ -2935,13 +2935,13 @@ ffff24e4:	52820000 	mov	w0, #0x1000
 ffff24e8:	35000261 	cbnz	w1, 0xffff2534		; return if result != 0
 
 ffff24ec:	d0000000 	adrp	x0, 0xffff4000
-ffff24f0:	b94ab800 	ldr	w0, [x0, #2744]			; fff4ab8: 03ff010f
+ffff24f0:	b94ab800 	ldr	w0, [x0, #2744]			; ffff4ab8: 03ff010f
 ffff24f4:	34000095 	cbz	w21, 0xffff2504			; branch if SD MMC
 ffff24f8:	d0000001 	adrp	x1, 0xffff4000
-ffff24fc:	b94abc21 	ldr	w1, [x1, #2748]			; fff4abc: ff440180, x1 = &CRU_CLKSEL_CON32
+ffff24fc:	b94abc21 	ldr	w1, [x1, #2748]			; ffff4abc: ff440180, x1 = &CRU_CLKSEL_CON32
 ffff2500:	14000003 	b	0xffff250c
 ffff2504:	d0000001 	adrp	x1, 0xffff4000
-ffff2508:	b94ac021 	ldr	w1, [x1, #2752]			; fff4ac0: ff440178, x1 = &CRU_CLKSEL_CON30
+ffff2508:	b94ac021 	ldr	w1, [x1, #2752]			; ffff4ac0: ff440178, x1 = &CRU_CLKSEL_CON30
 ffff250c:	b9000020 	str	w0, [x1]				; *x1 = 0x03ff010f
 ffff2510:	b9000a9f 	str	wzr, [x20, #8]			; mmc_8 = 0
 ffff2514:	52800020 	mov	w0, #0x1
@@ -3391,7 +3391,7 @@ ffff2ae4:	12087a60 	and	w0, w19, #0xff7fffff
 ffff2ae8:	350000e0 	cbnz	w0, 0xffff2b04		; return if bit from result is set
 ffff2aec:	b941faa0 	ldr	w0, [x21, #504]			; SRAM[504], select mmc
 ffff2af0:	d0000001 	adrp	x1, 0xffff4000
-ffff2af4:	b94b0c21 	ldr	w1, [x1, #2828]			; fff4b0c: 0001414c
+ffff2af4:	b94b0c21 	ldr	w1, [x1, #2828]			; ffff4b0c: 0001414c
 ffff2af8:	aa1f03e2 	mov	x2, xzr
 ffff2afc:	aa1f03e3 	mov	x3, xzr
 ffff2b00:	97ffff4b 	bl	0xffff282c				; mmc_load_next()
@@ -3920,7 +3920,7 @@ ffff301c:	b0000000 	adrp	x0, 0xffff4000
 ffff3020:	b94b2000 	ldr	w0, [x0, #2848]			; x0 = ffff4b20: ff580b00, &USBOTG_DOEPCTL0
 ffff3024:	b9400001 	ldr	w1, [x0]
 ffff3028:	b0000002 	adrp	x2, 0xffff4000
-ffff302c:	b94b2442 	ldr	w2, [x2, #2852]			; x2 = ffff4b21: ff580900, &USBOTG_DIEPCTL0
+ffff302c:	b94b2442 	ldr	w2, [x2, #2852]			; x2 = ffff4b24: ff580900, &USBOTG_DIEPCTL0
 ffff3030:	320b0021 	orr	w1, w1, #0x200000
 ffff3034:	b9000001 	str	w1, [x0]				; USBOTG_DOEPCTL0 |= 0x200000, STALL Handshake
 ffff3038:	b9400040 	ldr	w0, [x2]
@@ -5485,7 +5485,7 @@ ffff40f4:	b9000001 	str	w1, [x0]				; write it back
 ffff40f8:	52807d00 	mov	w0, #0x3e8
 ffff40fc:	97fff16d 	bl	0xffff06b0				; xxdelay(1000)
 ffff4100:	90000000 	adrp	x0, 0xffff4000
-ffff4104:	b94c5415 	ldr	w21, [x0, #3156]		; ffff5c54: ff0d0014, SGRF[0x14]
+ffff4104:	b94c5415 	ldr	w21, [x0, #3156]		; ffff4c54: ff0d0014, SGRF[0x14]
 ffff4108:	320983e0 	mov	w0, #0x800080
 ffff410c:	b90002a0 	str	w0, [x21]				; SGRF[0x14] = 0x800080
 ffff4110:	d2bfe160 	mov	x0, #0xff0b0000			; EFUSE_S[0], EFUSE_EFUSE_MOD
