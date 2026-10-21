@@ -11,12 +11,14 @@
 ;  0xff500000 - SDMMC
 ;  0xff520000 - eMMC
 ;  0xff580000 - USB2_OTG
-;  0xff230000 - GPIO2
+;  0xff230000 - GPIO2 (SWPORTA_DR; bit 3 driven during OTP/eFuse access)
 ;  0xff260000 - Efuse non secure access
 ;  0xff0b0000 - Efuse secure access
 ;  0xff090000 - Internal SRAM (36K?)
 ;  0xff0a0000 - OTP_S
 ;  0xff190000 - SPI
+;  0xff811000 - GIC-400 distributor (GICD)  - used by the USB-OTG IRQ path
+;  0xff812000 - GIC-400 CPU interface (GICC)
 ;
 ;
 ;  ff000000 - I2S0 - never seen
@@ -553,7 +555,7 @@ ffff033c:	b94007e0 	ldr	w0, [sp, #4]
 ffff0340:	6b20403f 	cmp	w1, w0, uxtw			; compare (u16)payload[16] with value from call
 ffff0344:	540008c3 	b.cc	0xffff045c			; return 1 if less
 ffff0348:	39402681 	ldrb	w1, [x20, #9]
-ffff034c:	372000e1 	tbnz	w1, #4, 0xffff0368	; branch if (u8)payload[9] != 4
+ffff034c:	372000e1 	tbnz	w1, #4, 0xffff0368	; branch (skip setup) if bit 4 of (u8)payload[9] is set
 ffff0350:	79402681 	ldrh	w1, [x20, #18]
 ffff0354:	b90006e1 	str	w1, [x23, #4]			; SRAM[32] = (u16)payload[18]
 ffff0358:	b9000ae0 	str	w0, [x23, #8]			; SRAM[36] = call value
@@ -1582,7 +1584,7 @@ ffff125c:	b90002f8 	str	w24, [x23]				; OTP_S[0x20] = 0x10001
 
 ffff1260:	b94002c0 	ldr	w0, [x22]				; w0 = OTP_S[0x304]
 ffff1264:	1284e21a 	mov	w26, #0xffffd8ef		; cnt = -10001
-ffff1268:	37080100 	tbnz	w0, #1, 0xffff1288	; branch if OTP_S[0x304] != 1
+ffff1268:	37080100 	tbnz	w0, #1, 0xffff1288	; branch (skip poll) if bit 1 of OTP_S[0x304] is set
 ; poll_a
 ffff126c:	1100075a 	add	w26, w26, #0x1			; cnt += 1
 ffff1270:	12800000 	mov	w0, #0xffffffff
@@ -1619,7 +1621,7 @@ ffff12d4:	b90002f8 	str	w24, [x23]				; OTP_S[0x20] = 0x10001
 
 ffff12d8:	b94002c0 	ldr	w0, [x22]				; w0 = OTP_S[0x304]
 ffff12dc:	1284e218 	mov	w24, #0xffffd8ef		; cnt = -10001
-ffff12e0:	37080100 	tbnz	w0, #1, 0xffff1300	; branch if OTP_S[0x304] != 1
+ffff12e0:	37080100 	tbnz	w0, #1, 0xffff1300	; branch (skip poll) if bit 1 of OTP_S[0x304] is set
 ; poll_b
 ffff12e4:	11000718 	add	w24, w24, #0x1			; cnt += 1
 ffff12e8:	12800000 	mov	w0, #0xffffffff
@@ -3037,7 +3039,7 @@ ffff2618:	36680094 	tbz	w20, #13, 0xffff2628
 
 ffff261c:	b9404aa0 	ldr	w0, [x21, #72]			; mmc_48
 ffff2620:	52808018 	mov	w24, #0x400                 	// #1024
-ffff2624:	37480d00 	tbnz	w0, #9, 0xffff27c4	; return if w0 != 9
+ffff2624:	37480d00 	tbnz	w0, #9, 0xffff27c4	; return if bit 9 of STATUS (mmc_48) is set -- data busy
 
 ffff2628:	b9402ea0 	ldr	w0, [x21, #44]			; mmc_2c
 ffff262c:	52820018 	mov	w24, #0x1000                	// #4096
@@ -3490,7 +3492,7 @@ ffff2c00:	5400124b 	b.lt	0xffff2e48			; return if w0 < 0, signed comparison
 ffff2c04:	350011a0 	cbnz	w0, 0xffff2e38		; loop continue if w0 != 0
 ffff2c08:	b9400340 	ldr	w0, [x26]
 ffff2c0c:	d0000001 	adrp	x1, 0xffff4000
-ffff2c10:	b94b1021 	ldr	w1, [x1, #2832]			; ffff4b10: fcdc8c3b, check IDB block signature?
+ffff2c10:	b94b1021 	ldr	w1, [x1, #2832]			; ffff4b10: fcdc8c3b, check IDB block signature (IDB sector-0 magic 0xfcdc8c3b)
 ffff2c14:	6b21401f 	cmp	w0, w1, uxtw
 ffff2c18:	54001101 	b.ne	0xffff2e38			; loop continue if not IDB block
 ffff2c1c:	52804001 	mov	w1, #0x200
@@ -4182,7 +4184,7 @@ ffff3380:	d65f03c0 	ret
 ffff3384:	b0000000 	adrp	x0, 0xffff4000
 ffff3388:	b94ba800 	ldr	w0, [x0, #2984]			; ffff4ba8: ff811184, &GIC400[0x1184], GICD_ICENABLER1
 ffff338c:	52a01001 	mov	w1, #0x800000
-ffff3390:	b9000001 	str	w1, [x0]				; GICD_ICENABLER1 = 0x800000, otg_int disable?
+ffff3390:	b9000001 	str	w1, [x0]				; GICD_ICENABLER1 = 0x800000, otg_int DISABLE (clear-enable of IRQ ID=55)
 ffff3394:	d65f03c0 	ret
 
 ; =======================================================
@@ -4263,6 +4265,11 @@ ffff344c:	7100dc1f 	cmp	w0, #0x37
 ffff3450:	540000c1 	b.ne	0xffff3468			; return if GICC_IAR != 0x37
 
 ffff3454:	94000008 	bl	0xffff3474				; usb2_otg_isr(), usb isr handler
+; [reconstruction] NOTE: on a download, usb2_otg_isr() launches the uploaded
+;   image (the 0x471/0x472 "GO" path) and NEVER RETURNS, so the GICC_EOIR
+;   write below is SKIPPED. => OTG SPI 55 is left ACTIVE in the GIC on the
+;   USB boot path (SD/storage boot never takes this interrupt). This residual
+;   GIC active-state is a candidate for the all-USB SMP hang.
 
 ffff3458:	b0000000 	adrp	x0, 0xffff4000
 ffff345c:	b94bd400 	ldr	w0, [x0, #3028]			; ffff4bd4: ff812010, GIC400[0x2010], GICC_EOIR
@@ -5240,7 +5247,9 @@ ffff3f08:	d65f03c0 	ret
 ; One call to this,  enters right here
 ; cksum ( buf, n )
 ;
-; looks to me like it generates some kind of checksum
+; [reconstruction] This is CRC-16/CCITT: init 0xffff (ffff3f10), polynomial
+;   0x1021 (ffff3f18), MSB-first (bit mask 0x8000 / 0x80). Used to validate
+;   USB-download blobs - ffff3e6c checks it, then RC4-decrypts the payload.
 ffff3f0c:	aa0003e2 	mov	x2, x0					; buf
 ffff3f10:	529fffe0 	mov	w0, #0xffff
 ffff3f14:	34000241 	cbz	w1, 0xffff3f5c			; return if n == 0
@@ -6028,7 +6037,7 @@ ffff4698:	00000000 ffff3620
 ffff46a0:	00000000 ffff35d8
 ;
 ffff46a8:	40000000 02000112
-ffff46b0:	00000100 320c2207	; vendor/product = 2207, 330c
+ffff46b0:	00000100 320c2207	; vendor/product = 2207, 320c (Rockchip / RK3328)
 ffff46b8:	00200209 00000100
 ffff46c0:	000409c8 80000101
 ffff46c8:	05070005 06ff0200
