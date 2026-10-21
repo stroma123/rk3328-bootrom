@@ -96,4 +96,45 @@ All credit goes to Tom Trebisky. I relied on his tools and reused portions of hi
 
 ## Summary
 
-Unfortunately, despite my efforts, I was unable to determine why the USB-only boot process fails, nor did I find a viable workaround.
+The root cause has been found and fixed: the BootROM never completes the USB OTG interrupt it uses to start the downloaded loader.
+
+### Root cause
+
+In USB (Mask ROM) mode the BootROM handles the download from inside its OTG interrupt handler:
+
+```
+ffff0a80  IRQ vector (EL3)
+  ffff3434  read GICC_IAR (ack)  -> interrupt 55 (OTG) becomes ACTIVE
+    ffff3474  OTG ISR -> ... -> usb_try_run()
+      ffff3de0  blr x19          -> jumps to the downloaded image, never returns
+  ffff3464  GICC_EOIR = 55       <- never reached
+```
+
+TPL returns to the BootROM, so its interrupt is completed normally. SPL does not return, so the end-of-interrupt (`GICC_EOIR`) for the final download is never written. SPL therefore starts with:
+
++ OTG interrupt 55 still **active** in the GIC (`GICD_ISACTIVER1` bit 23);
++ CPU0's GIC running priority stuck at the highest level (`GICC_RPR = 0x00`, `GICC_APR0 = 1`).
+
+This is visible directly in SPL: `ELR_EL3 = 0xffff42c0` (the BootROM idle loop that the interrupt preempted) and `SPSR_EL3` show that SPL is running inside an EL3 IRQ exception.
+
+Resetting the GIC is not enough. Disabling the distributor and CPU interface, clearing enables or pending bits, or changing the priority mask or groups leaves the active state and CPU0's active priority untouched. ATF and U-Boot do not clear them either. Booting from SD takes no interrupt, which is why the same binaries work there.
+
+### Fix
+
+Complete the end-of-interrupt that the BootROM skipped, early in SPL and only when the interrupt is really active (`arch/arm/mach-rockchip/rk3328/rk3328.c`, called from `arch_cpu_init()`):
+
+```c
+#if defined(CONFIG_SPL_BUILD) && !defined(CONFIG_TPL_BUILD)
+static void rk3328_complete_bootrom_irq(void)
+{
+	if (readl(GICD_ISACTIVER1) & BIT(RK3328_IRQ_OTG - 32))	/* SPI 55 active? */
+		writel(RK3328_IRQ_OTG, GICC_EOIR);		/* 55 -> 0xFF812010 */
+}
+#endif
+```
+
+It must not run in TPL, because TPL returns to the BootROM, which completes the interrupt itself.
+
+With this change, the all-USB boot (`rkdeveloptool db` → `u-boot.itb` over SDP → kernel) brings up all four CPUs (`smp: Brought up 1 node, 4 CPUs`) and boots to userspace. This was verified with no other GIC cleanup in SPL, and with three BL31 builds: mainline TF-A v2.10, mainline TF-A v2.3 and the Rockchip rkbin blob.
+
+The interrupt path is annotated in [bootrom/bootrom.txt](bootrom/bootrom.txt). See `ffff0a80` (IRQ vector), `ffff3434` (GIC handler, with a note at `ffff3454`) and `ffff3de0` (jump to the loaded image).
